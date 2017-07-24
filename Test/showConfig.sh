@@ -4,13 +4,12 @@
 # Date:		Aug, 2015
 
 ROOT_PATH=/appex
-PRODUCT_NAME=LotServer
+PRODUCT_NAME=ServerSpeeder
 
 [ -f $ROOT_PATH/etc/config ] || { echo "Missing file: $ROOT_PATH/etc/config"; exit 1; }
 . $ROOT_PATH/etc/config 2>/dev/null
-#KILLNAME=$(echo $(basename $apxexe) | sed "s/-\[.*\]//")
-#[ -z "$KILLNAME" ] && KILLNAME="acce-";
-KILLNAME=acce-[0-9.-]+\[.*\]
+KILLNAME=$(echo $(basename $apxexe) | sed "s/-\[.*\]//")
+[ -z "$KILLNAME" ] && KILLNAME="acce-";
 pkill -0 $KILLNAME 2>/dev/null
 [ $? -eq 0 ] || {
     echo "$PRODUCT_NAME is NOT running!"
@@ -40,7 +39,7 @@ case "$1" in
 			}
 			echo -en "$i\n"
 		done
-		items=$(cat /proc/net/appex/cmd 2>/dev/null | awk -F: '{print $1}')
+		items=$(cat /proc/net/appex/cmd 2>/dev/null)
 		[ -z "$items" ] && items=$($apxexe /0/cmd | awk -F: '{print $1}')
 		for i in $items; do
 			[ "$i" = "wanState" ] && continue

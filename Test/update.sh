@@ -1,224 +1,64 @@
 #!/bin/echo Warning: this is a library file, can not be execute directly:
-# Copyright (C) 2017 AppexNetworks
-# Author:	Len
-# Date:		May, 2017
+# Author:	Vicer
+# Date:		Mar, 2017
 
-getSysInfo() {
-	# Get interface
-	[ -f /proc/net/dev ] && {
-		if grep 'eth0:' /proc/net/dev >/dev/null; then
-			IFNAME=eth0
-		else
-			#exclude: lo sit stf gif dummy vmnet vir        
-			IFNAME=`cat /proc/net/dev | awk -F: 'function trim(str){sub(/^[ \t]*/,"",str); sub(/[ \t]*$/,"",str); return str } NR>2 {print trim($1)}'  | grep -Ev '^lo|^sit|^stf|^gif|^dummy|^vmnet|^vir|^gre|^ipip|^ppp|^bond|^tun|^tap|^ip6gre|^ip6tnl|^teql' | awk 'NR==1 {print $0}' `
-		fi
-	}
-	[ -z "$IFNAME" ] && {
-	    echo "Network interface not found! (error code: 100)"
-	    return 1
-	}
-	
-	# Get kernel info
-	KER_VER=`uname -r`
-	SMP=`uname -a | grep SMP`
-	X86_64=`uname -a | grep -i x86_64`
-	
-	[ -f /etc/os-release ] && {
-		local NAME VERSION VERSION_ID PRETTY_NAME ID ANSI_COLOR CPE_NAME BUG_REPORT_URL HOME_URL ID_LIKE
-		eval $(cat /etc/os-release) 2>/dev/null
-		[ -n "$NAME" ] && DIST=$NAME
-		[ -n "$VERSION_ID" ] && REL=$VERSION_ID
-		[ -z "$REL" -a -n "$VERSION" ] && {
-			for i in $VERSION; do
-				ver=${i//./}
-				if [ "$ver" -eq "$ver" 2> /dev/null ]; then
-					REL=$i
-					break
-				fi
-			done
-		}
-	}
-	[ -z "$DIST" -o -z "$REL" ] && {
-		[ -f /etc/redhat-release ] && line=$(cat /etc/redhat-release)
-		[ -f /etc/SuSE-release ] && line=$(cat /etc/SuSE-release)
-		[ -z "$line" ] && line=`cat /etc/issue`
-		for i in $line; do
-		    ver=${i//./}
-		    if [ "$ver" -eq "$ver" 2> /dev/null ]; then
-		        REL=$i
-		        break
-		    fi
-		    [ "$i" = "release" -o "$i" = "Welcome" -o "$i" = "to" ] || DIST="$DIST $i"
-		done
-	}
-	DIST=`echo $DIST | sed 's/^[ \s]*//g' | sed 's/[ \s]*$//g'`
-	DIST=`echo $DIST | sed 's/[ ]/_/g'`
-	MEM=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+echo
+echo "************************************************************"
+echo "*                                                          *"
+echo "*                 ServerSpeeder Updater                    *"        
+echo "*                                                          *"
+echo "************************************************************"
+echo
+MyKNK=''
+Installed=''
+which wget >/dev/null 2>&1
+[ $? -ne 0 ] && {
+echo 'ERROR(WGET): "wget" not found, please install "wget" using "yum install wget" or "apt-get install wget" according to your linux distribution'
+return 1
 }
-
-function modVersion() {
-	[ -f "$1" ] || return 1
-	modinfo $1 | awk '/^version:/ {print $2}'
+which awk >/dev/null 2>&1
+[ $? -ne 0 ] && {
+echo 'ERROR(AWK): "awk" not found, please install "awk" using "yum install gawk" or "apt-get install gawk" according to your linux distribution'
+return 1
 }
-
-function update() {
-	echo
-	echo "************************************************************"
-	echo "*                                                          *"
-	echo "*              AppEx LotServer Updater (1.2)               *"        
-	echo "*                                                          *"
-	echo "************************************************************"
-	echo
-	
-	# Locate wget
-	which wget >/dev/null 2>&1
-	[ $? -ne 0 ] && {
-		echo 'ERROR(WGET): "wget" not found, please install "wget" using "yum install wget" or "apt-get install wget" according to your linux distribution'
-		exit
-	}
-	
-	KER_VER=''
-	SMP=''
-	X86_64=''
-	DIST=""
-	REL=""
-	MEM=""
-	IFNAME=eth0
-	
-	[ -z "$email" -o -z "$serial" ] && {
-	    echo "Missing parameters in config file: email or serial"
-	    exit 1
-	}
-	getSysInfo
-	acceVer=$(echo $apxexe | awk -F- '{print $2}')
-	para="e=$email&s=$serial&l=$DIST&v=$REL&k=$KER_VER&i=$IFNAME&b=${X86_64:+1}&m=$MEM&accv=$acceVer&iv=$installerID&rtt=$rtt"
-	url="http://$HOST/ls_update.jsp?ml=$email&ml2=$serial"
-	
-	out=apxhttp.$$
-	rm -rf $ROOT_PATH/update.tar.gz 2>/dev/null
-	echo "Authenticating user..."
-	wget --post-data $para -o $out -O $ROOT_PATH/update.tar.gz $url
-	downStat=0
-	[ -f $ROOT_PATH/update.tar.gz ] && {
-	    filesize=0
-	    stat=`which stat`
-	    [ -n "$stat" ] && filesize=`stat -c "%s" $ROOT_PATH/update.tar.gz`
-	    [ -z "$stat" ] && filesize=`ls -l $ROOT_PATH/update.tar.gz | awk '{print $5}'`
-	    [ $filesize -gt 100 ] && downStat=1
-	}
-	if [ $downStat = 1 ]; then
-	    sleep 1
-	    [ -d $ROOT_PATH/.tmp ] || mkdir -p $ROOT_PATH/.tmp
-	    tar xzvf $ROOT_PATH/update.tar.gz -C $ROOT_PATH/.tmp 1>/dev/null 2>/dev/null
-	    local keepKo=0
-	    local existKo=$rttko
-	    local newKo=$(ls $ROOT_PATH/.tmp/bin/acce-*.rtt.ko 2>/dev/null)
-	    [ -n "$existKo" -a -n "$newKo" ] && {
-	    	local existKoVer=$(modVersion $existKo)
-	    	local newKoVer=$(modVersion $newKo)
-	    	[ -n "$existKoVer" -a -n "$newKoVer" -a "$existKoVer" = "$newKoVer" ] && keepKo=1
-	    }
-	    
-	    dtstr=$(date +%Y-%m-%d_%H-%M-%S)
-	    mkdir -p $ROOT_PATH/.bin_$dtstr $ROOT_PATH/.etc_$dtstr
-	    if [ $keepKo -eq 0 ]; then
-	    	mv -f $ROOT_PATH/bin/* $ROOT_PATH/.bin_$dtstr/
-	    else
-	    	#shopt -s extglob
-	    	#/bin/mv -f $ROOT_PATH/bin/!($existKo) $ROOT_PATH/.bin_$dtstr/
-	    	find $ROOT_PATH/bin/ -type f -name "*[^(.rtt.ko)]" -exec mv {} $ROOT_PATH/.bin_$dtstr/ \;
-	    	rm -f $newKo
-	    fi
-	    mv -f $ROOT_PATH/etc/* $ROOT_PATH/.etc_$dtstr/
-
-	    cp -f $ROOT_PATH/.tmp/bin/* $ROOT_PATH/bin/
-	    cp -f $ROOT_PATH/.tmp/etc/* $ROOT_PATH/etc/
-	    chmod +x $ROOT_PATH/bin/*
-	    
-	    [ -f $ROOT_PATH/.etc_$dtstr/clsf ] && cp -f $ROOT_PATH/.etc_$dtstr/clsf $ROOT_PATH/etc/
-	    while read _line; do
-			item=$(echo $_line | awk -F= '/^[^#]/ {print $1}')
-			val=$(echo $_line | awk -F= '/^[^#]/ {print $2}' | sed 's#\/#\\\/#g')
-			[ -n "$item" -a "$item" != "accpath" -a "$item" != "apxexe" -a "$item" != "rttko" -a \
-				 "$item" != "apxlic" -a "$item" != "installerID" -a "$item" != "email" -a "$item" != "serial" ] && {
-				if [ -n "$(grep $item $ROOT_PATH/etc/config)" ]; then
-					sed -i "s/^#\{0,1\}$item=.*/$item=$val/" $ROOT_PATH/etc/config
-				else
-					sed -i "/^engineNum=.*/a$item=$val" $ROOT_PATH/etc/config
-				fi
-			}
-			[ $keepKo -eq 1 -a "$item" = "rttko" ] && {
-				sed -i "s/^#\{0,1\}$item=.*/$item=$val/" $ROOT_PATH/etc/config
-			}
-		done<$ROOT_PATH/.etc_$dtstr/config
-		
-		
-	    
-	    [ -f $ROOT_PATH/.tmp/expiredDate ] && {
-			echo -n "Expired Date: "
-	    	cat $ROOT_PATH/.tmp/expiredDate
-	    	echo
-	  	}
-	    rm -rf $ROOT_PATH/.tmp 2>/dev/null
-	    [ "$1" != "-grace" ] && {
-	    	echo -n "Restarting $PRODUCT_NAME..."
-	    	. $ROOT_PATH/etc/config 2>/dev/null
-	    	getVerStage
-	    	if [ $keepKo -eq 0 ]; then
-	    		restart all
-	    	else
-	    		restart
-	    	fi
-	    		
-		}
-	    echo "Done!"
-	else
-	    grep 401 $out >/dev/null 2>&1 && {
-	        echo "Invalid Email! (error code: 401)"
-	        rm -rf $out $ROOT_PATH/update.tar.gz 2>/dev/null
-	        return 1
-	    }
-	    grep 403 $out >/dev/null 2>&1 && {
-	        echo "$PRODUCT_NAME is up to date."
-	        rm -rf $out $ROOT_PATH/update.tar.gz 2>/dev/null
-	        return 1
-	    }
-	    grep 405 $out >/dev/null 2>&1 && {
-	        echo "Your trial licenses have been used out! (error code: 405)"
-	        rm -rf $out $ROOT_PATH/update.tar.gz 2>/dev/null
-	        return 1
-	    }
-	    grep 410 $out >/dev/null 2>&1 && {
-			echo "License does not exist! (error code: 410)"
-			rm -rf $out $ROOT_PATH/update.tar.gz 2>/dev/null
-	        return 1
-		}
-	    grep 417 $out >/dev/null 2>&1 && {
-	        echo "Your license has expired! (error code: 417)"
-	        rm -rf $out $ROOT_PATH/update.tar.gz 2>/dev/null
-	        return 1
-	    }
-	    grep 501 $out >/dev/null 2>&1 && {
-	        echo "No available versions found for your server! (error code: 501)"
-	        echo "More information can be found from: http://$HOST/ls.do?m=availables"
-	        rm -rf $out $ROOT_PATH/update.tar.gz 2>/dev/null
-	        return 1
-	    }
-	    grep 502 $out >/dev/null 2>&1 && {
-	        echo "No available versions found for your server! (error code: 502)"
-	        echo "More information can be found from: http://$HOST/ls.do?m=availables"
-	        rm -rf $out $ROOT_PATH/update.tar.gz 2>/dev/null
-	        return 1
-	    }
-	    grep 503 $out >/dev/null 2>&1 && {
-	        echo "The license of this server is obsolete! (error code: 503)"
-	        rm -rf $out $ROOT_PATH/update.tar.gz 2>/dev/null
-	        return 1
-	    }
-    	echo "Error occur! (error code: 400)"
-    	cat $out
-    	rm -rf $out $ROOT_PATH/update.tar.gz 2>/dev/null
-	    return 1
-	fi
-	rm -rf $out $ROOT_PATH/update.tar.gz 2>/dev/null
+which sed >/dev/null 2>&1
+[ $? -ne 0 ] && {
+echo 'ERROR(SED): "sed" not found, please install "sed" using "yum install sed" or "apt-get install sed" according to your linux distribution'
+return 1
 }
+[ -d '/appex/bin' ] && Installed="$(ls -1 '/appex/bin' |grep 'acce-')"
+[ -z "$Installed" ] && echo 'Not Install! ' && return 1
+[ -f /etc/redhat-release ] && KNA=$(awk '{print $1}' /etc/redhat-release)
+[ -f /etc/os-release ] && KNA=$(awk -F'[= "]' '/PRETTY_NAME/{print $3}' /etc/os-release)
+[ -f /etc/lsb-release ] && KNA=$(awk -F'[="]+' '/DISTRIB_ID/{print $2}' /etc/lsb-release)
+KNB=$(getconf LONG_BIT)
+MyKNK="$(echo "$Installed" |awk -F '[[]|]' '{print $2}')"
+[ -n "$MyKNK" ] && KNK="$(echo "$MyKNK" |awk -F '_' '{for(i=3;i<=NF;i++){printf "%s_",$i}}' |sed 's/_$//g')" || return 1
+URLKernel='https://raw.githubusercontent.com/0oVicero0/serverSpeeder_kernel/master/serverSpeeder.txt'
+MyKernel=$(wget --no-check-certificate -qO- "$URLKernel" |grep "$KNA/" |grep "/x$KNB/" |grep "/$KNK/" |sort -n -k 2 -t '_' |tail -n 1)
+[ -z "$MyKernel" ] && echo 'The kernel is not fonund in library! ' && return 1
+KNV="$(echo "$MyKernel" |awk -F '/' '{print $5}')"
+KNN="$(echo "$MyKernel" |awk -F '/' '{ print $2 }')"
+rm -rf /tmp/acce*
+wget --no-check-certificate -q -O "/tmp/acce-"$KNV"-["$KNA"_"$KNN"_"$KNK"]" "https://raw.githubusercontent.com/0oVicero0/serverSpeeder_kernel/master/$MyKernel"
+[ ! -f "/tmp/acce-"$KNV"-["$KNA"_"$KNN"_"$KNK"]" ] && echo "Update error! " && {
+chattr -R -i /appex >/dev/null 2>&1
+[ -d /etc/rc.d ] && rm -rf /etc/rc.d/init.d/serverSpeeder >/dev/null 2>&1
+[ -d /etc/rc.d ] && rm -rf /etc/rc.d/rc*.d/*serverSpeeder >/dev/null 2>&1
+[ -d /etc/rc.d ] && rm -rf /etc/rc.d/init.d/lotServer >/dev/null 2>&1
+[ -d /etc/rc.d ] && rm -rf /etc/rc.d/rc*.d/*lotServer >/dev/null 2>&1
+[ -d /etc/init.d ] && rm -rf /etc/init.d/serverSpeeder >/dev/null 2>&1
+[ -d /etc/init.d ] && rm -rf /etc/rc*.d/*serverSpeeder >/dev/null 2>&1
+[ -d /etc/init.d ] && rm -rf /etc/init.d/lotServer >/dev/null 2>&1
+[ -d /etc/init.d ] && rm -rf /etc/rc*.d/*lotServer >/dev/null 2>&1
+rm -rf /etc/lotServer.conf >/dev/null 2>&1
+rm -rf /etc/serverSpeeder.conf >/dev/null 2>&1
+[ -f /appex/bin/serverSpeeder.sh ] && bash /appex/bin/serverSpeeder.sh uninstall -f >/dev/null 2>&1
+return 1
+}
+[ -f "/appex/bin/$Installed" ] && rm -rf "/appex/bin/$Installed"
+mv "/tmp/acce-"$KNV"-["$KNA"_"$KNN"_"$KNK"]" "/appex/bin/acce-"$KNV"-["$KNA"_"$KNN"_"$KNK"]"
+[ -f '/appex/etc/config' ] && sed -i "s/^apxexe\=.*/apxexe\=\"\/appex\/bin\/"$(ls -1 /appex/bin |grep 'acce-')"\"/" /appex/etc/config
+chown -R root:root /appex
+chmod -R a+x /appex
+echo -e "The last version is \033[32m$KNV\033[0m! "

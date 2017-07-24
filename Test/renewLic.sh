@@ -1,22 +1,27 @@
 #!/bin/echo Warning: this is a library file, can not be execute directly:
-# Copyright (C) 2015 AppexNetworks
-# Author:	Len
-# Date:		Aug, 2015
+# Author:	Vicer
+# Date:		Mar, 2017
 
 function renew() {
 
 	echo
 	echo "************************************************************"
 	echo "*                                                          *"
-	echo "*          AppEx LotServer License Updater (1.2)           *"        
+	echo "*           ServerSpeeder License Updater (1.2)            *"        
 	echo "*                                                          *"
 	echo "************************************************************"
 	echo
 
-	# Locate wget
+	# Locate wget awk
 	which wget >/dev/null 2>&1
 	[ $? -ne 0 ] && {
 		echo 'ERROR(WGET): "wget" not found, please install "wget" using "yum install wget" or "apt-get install wget" according to your linux distribution'
+		return 1
+	}
+	
+	which awk >/dev/null 2>&1
+	[ $? -ne 0 ] && {
+		echo 'ERROR(WGET): "awk" not found, please install "awk" using "yum install gawk" or "apt-get install gawk" according to your linux distribution'
 		return 1
 	}
 	
@@ -35,28 +40,17 @@ function renew() {
 		echo "Network interface not found! (error code: 100)"
 		return 1
 	}
-	[ -z "$email" -o -z "$serial" ] && {
-		echo "Missing parmeters in config file: email or serial"
-		return 1
-	}
 	
-	local licneseCode=''
-	[ -n "$1" -a "$1" != "-grace" ] && {
-		local charCnt=$(echo -n "$1" | wc -m)
-		[ "$1" != 'auto' -a "$charCnt" != "16" ] && {
-			echo "Invalid License Code format"
-			return 1
-		}
-		licenseCode=$1
-	}
-	
-	local para="e=$email&s=$serial&i=$ifname&c=$licenseCode"
-	local url="http://$HOST/ls_updatelic.jsp?ml=$email&ml2=$serial&ml3=$ifname"
+	MAC=$(ifconfig "$ifname" |awk '/HWaddr/{ print $5 }')
+	[ -z "$MAC" ] && MAC=$(ifconfig "$Eth" |awk '/ether/{ print $2 }')
+	local myMAC="$MAC"
+	[ -n "$1" ] && local Band="$1" && shift || local Band='1024M'
+	local url="http://$HOST/lic?mac=$myMAC&bandwidth=$Band"
 	
 	local out=apxhttp.$$
 	rm -rf $ROOT_PATH/lic 2>/dev/null
 	echo "authenticating..."
-	wget --save-cookies cookies.$$ --keep-session-cookies --post-data $para -o $out -O $ROOT_PATH/lic $url
+	wget -o $out -O $ROOT_PATH/lic $url
 	local downStat=0
 	[ -f $ROOT_PATH/lic ] && {
 		local filesize=0

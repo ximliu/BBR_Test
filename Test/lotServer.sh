@@ -1,30 +1,30 @@
 #!/bin/bash
-# Copyright (C) 2017 AppexNetworks
+# Copyright (C) 2015 AppexNetworks
 # Author:	Len
-# Date:		May, 2017
-# Version:	1.7.5.5
+# Date:		Oct, 2015
+# Version:	1.5.10.13
 #
 # chkconfig: 2345 20 15
-# description: LotServer, accelerate your network
+# description: ServerSpeeder, accelerate your network
 #
 ### BEGIN INIT INFO
-# Provides: lotServer
-# Required-Start: $network
+# Provides: ServerSpeeder
+# Required-Start: $all
 # Required-Stop:
 # Default-Start: 2 3 5
 # Default-Stop: 0 1 6
-# Description: Start LotServer daemon.
+# Description: Start ServerSpeeder daemon.
 ### END INIT INFO
 
 [ -w / ] || {
-	echo "You are not running LotServer as root. Please rerun as root" >&2
+	echo "You are not running ServerSpeeder as root. Please rerun as root" >&2
 	exit 1
 }
 
 ROOT_PATH=/appex
-SHELL_NAME=lotServer.sh
-PRODUCT_NAME=LotServer
-PRODUCT_ID=lotServer
+SHELL_NAME=serverSpeeder.sh
+PRODUCT_NAME=ServerSpeeder
+PRODUCT_ID=serverSpeeder
 
 [ -f $ROOT_PATH/etc/config ] || { echo "Missing config file: $ROOT_PATH/etc/config" >&2; exit 1; }
 . $ROOT_PATH/etc/config 2>/dev/null
@@ -172,20 +172,11 @@ initConf() {
 	RUNCONFIG_BAK=$ROOT_PATH/etc/.runconfig
 	CPUNUM=0
 	VER_STAGE=1
-	HOST=lotserver.cn
+	HOST=serverspeeder.azurewebsites.net
 	trap "userCancel;" 1 2 3 6 9 15
-	
-	BOOTUP=color
-	RES_COL=60
-	MOVE_TO_COL="echo -en \\033[${RES_COL}G"
-	SETCOLOR_SUCCESS="echo -en \\033[1;32m"
-	SETCOLOR_FAILURE="echo -en \\033[1;31m"
-	SETCOLOR_WARNING="echo -en \\033[1;33m"
-	SETCOLOR_NORMAL="echo -en \\033[0;39m"
 
 	local rst=0
 	[ -n "$accif" ] && accif=$(echo $accif)
-	[ -n "$lanif" ] && lanif=$(echo $lanif) || lanif=''
 		
 	[ -z "$acc" ] && acc=1
 	[ -z "$advacc" ] && advacc=1
@@ -236,18 +227,10 @@ initConf() {
 	[ -z "$accpath" ] && accpath="/proc/net/appex"
 	[ -z "$dropCache" ] && dropCache="0"
 	[ -z "$shrinkOSWmem" ] && shrinkOSWmem="0"
-	[[ -n "$pmtu" && "$pmtu" != "0" ]] && {
-		echo "ERROR(CONFIG): pmtu can only be empty or zero"
-		rst=1
-	}
 	[ -z "$apxexe" ] && {
 		echo "ERROR(CONFIG): missing config: apxexe"
 		rst=1
 	}
-	[ -f "$rttko" ] && rtt=1
-	
-	[ -z "$initialCwndLan" ] && initialCwndLan=1024
-	
 	if [ -z "$apxlic" ]; then
 		if [ -f $ROOT_PATH/bin/activate.sh ]; then
 			#not actived
@@ -260,7 +243,6 @@ initConf() {
 	if [ -f $apxexe ]; then
 		KILLNAME=$(echo $(basename $apxexe) | sed "s/-\[.*\]//")
 		[ -z "$KILLNAME" ] && KILLNAME="acce-";
-		KILLNAME=acce-[0-9.-]+\[.*\]
 	else
 		echo "ERROR(CONFIGFILE): missing file: $apxexe"
 		rst=1
@@ -268,7 +250,7 @@ initConf() {
 
 	# Locate ethtool
 	ETHTOOL=$(which ethtool)
-	[ "$nic_offload" != "1" ] && [ -z "$ETHTOOL" ] && {
+	[ "$gso" != "1" -o "$rsc" != 1 ] && [ -z "$ETHTOOL" ] && {
 		[ -f $ROOT_PATH/bin/ethtool ] && {
 			ETHTOOL=$ROOT_PATH/bin/ethtool
 		} || {
@@ -278,36 +260,8 @@ initConf() {
 	}
 	[ -z "$afterLoad" ] && afterLoad=/appex/bin/afterLoad
 	[ "$detectInterrupt" = "1" ] && configCPUId
-	
-	# rtt init
-	rttWork=/etc/rtt
-	
 	[ $rst -eq 1 ] && exit 1
 	return $rst
-}
-
-# Log that something succeeded
-success() {
-    [ "$BOOTUP" = "color" ] && $MOVE_TO_COL
-    echo -n "["
-    [ "$BOOTUP" = "color" ] && $SETCOLOR_SUCCESS
-    echo -n $"  OK  "
-    [ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
-    echo -n "]"
-    echo -ne "\r"
-    return 0
-}
-
-# Log that something failed
-failure() {
-    [ "$BOOTUP" = "color" ] && $MOVE_TO_COL
-    echo -n "["
-    [ "$BOOTUP" = "color" ] && $SETCOLOR_FAILURE
-    echo -n $"FAILED"
-     [ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
-     echo -n "]"
-     echo -ne "\r"
-     return 1
 }
 
 ip2long() {
@@ -321,55 +275,11 @@ getVerStage() {
 	local verName=$(echo $apxexe | awk -F- '{print $2}')
 	local intVerName=$(ip2long $verName)
 	local boundary=0
-	local boundary2=0
-	
-	boundary=$(ip2long '3.11.42.203')
-	[ $intVerName -ge $boundary ] && {
-		#IPv6, and related config
-		VER_STAGE=33
-		return
-	}
-
-	boundary=$(ip2long '3.11.29.0')
-	[ $intVerName -ge $boundary ] && {
-		#lanif
-		VER_STAGE=31
-		return
-	}
-	
-	boundary=$(ip2long '3.11.27.63')
-	[ $intVerName -ge $boundary ] && {
-		#initialCwndLan
-		VER_STAGE=30
-		return
-	}
-	
-	boundary=$(ip2long '3.11.27.0')
-	[ $intVerName -eq $boundary ] && {
-		#lanif
-		VER_STAGE=29
-		return
-	}
-	
-	boundary=$(ip2long '3.11.20.10')
-	[ $intVerName -ge $boundary ] && {
-		# set initial taskSchedDelay value to 100 100
-		VER_STAGE=28
-		
-		[ -n "$updatedAt" ] && {
-			updatedAt=
-			taskSchedDelay="100 100"
-			sed -i "s/^taskSchedDelay=.*/taskSchedDelay=\"100 100\"/" $ROOT_PATH/etc/config 2>/dev/null
-			sed -i '/^updatedAt=.*/d' $ROOT_PATH/etc/config 2>/dev/null
-		}
-		
-		return
-	}
 	
 	boundary=$(ip2long '3.11.19.11')
 	[ $intVerName -ge $boundary ] && {
 		#mpoolMaxCache
-		VER_STAGE=27
+		VER_STAGE=28
 		return
 	}
 	
@@ -553,7 +463,7 @@ initConfigEng() {
 }
 
 checkTso() {
-	[ -n "$nic_offload" -a "$nic_offload" = "1" ] && return 0
+	[ $VER_STAGE -ge 9 -a -n "$gso" -a "$gso" = "1" ] && return 0
 	[ -z "$($ETHTOOL -k $1 2>/dev/null | grep -E 'tcp.segmentation.offload:')" ] && return 0
 	[ -n "$($ETHTOOL -k $1 2>/dev/null | grep -E 'tcp.segmentation.offload: off')" ] && return 0
 	$ETHTOOL -K $1 tso off 2>/dev/null
@@ -571,7 +481,7 @@ checkTso() {
 }
 
 checkGso() {
-	[ -n "$nic_offload" -a "$nic_offload" = "1" ] && return 0
+	[ $VER_STAGE -ge 9 -a -n "$gso" -a "$gso" = "1" ] && return 0
 	[ -z "$($ETHTOOL -k $1 2>/dev/null | grep -E 'generic.segmentation.offload:')" ] && return 0
 	[ -n "$($ETHTOOL -k $1 2>/dev/null | grep -E 'generic.segmentation.offload: off')" ] && return 0
 	$ETHTOOL -K $1 gso off 2>/dev/null
@@ -589,7 +499,7 @@ checkGso() {
 }
 
 checkGro() {
-	[ -n "$nic_offload" -a "$nic_offload" = "1" ] && return 0
+	[ $VER_STAGE -ge 9 -a -n "$rsc" -a "$rsc" = "1" ] && return 0
 	[ -z "$($ETHTOOL -k $1 2>/dev/null | grep -E 'generic.receive.offload:')" ] && return 0
 	[ -n "$($ETHTOOL -k $1 2>/dev/null | grep -E 'generic.receive.offload: off')" ] && return 0
 	$ETHTOOL -K $1 gro off 2>/dev/null
@@ -607,7 +517,7 @@ checkGro() {
 }
 
 checkLro() {
-	[ -n "$nic_offload" -a "$nic_offload" = "1" ] && return 0
+	[ $VER_STAGE -ge 9 -a -n "$rsc" -a "$rsc" = "1" ] && return 0
 	[ -z "$($ETHTOOL -k $1 2>/dev/null | grep -E 'large.receive.offload:')" ] && return 0
 	[ -n "$($ETHTOOL -k $1 2>/dev/null | grep -E 'large.receive.offload: off')" ] && return 0
 	$ETHTOOL -K $1 lro off 2>/dev/null
@@ -625,7 +535,7 @@ checkLro() {
 }
 
 checkSg() {
-	[ -n "$nic_offload" -a "$nic_offload" = "1" ] && return 0
+	[ $VER_STAGE -ge 9 -a -n "$gso" -a "$gso" = "1" ] && return 0
 	[ -z "$($ETHTOOL -k $1 2>/dev/null | grep -E 'scatter.gather:')" ] && return 0
 	[ -n "$($ETHTOOL -k $1 2>/dev/null | grep -E 'scatter.gather: off')" ] && return 0
 	$ETHTOOL -K $1 sg off 2>/dev/null
@@ -652,14 +562,11 @@ checkInfOffload() {
 		local isBondingInf=0
 		local isBridgedInf=0
 		local isVlanInf=0
-		local _tmpName=''
 		#echo checking $x
-		_tmpName=${x//\./dot}
-		_tmpName=${_tmpName//-/dash}
 		#check whether been checked
-		eval offload_checked=\$offload_checked_$_tmpName
+		eval offload_checked=\$offload_checked_${x//\./dot}
 		[ -n "$offload_checked" ] && continue
-		eval offload_checked_$_tmpName=1
+		eval offload_checked_${x//\./dot}=1
 		
 		#check whether the interface is bridged
 		if [ -z "$2" -a -d /sys/class/net/$x/brport ]; then
@@ -694,122 +601,20 @@ checkInfOffload() {
 		}
 		
 		#[ $isBondingInf -eq 0 -a $isVlanInf -eq 0 ] && {
-			checkSg $x
 			checkTso $x
-			#[ $? -gt 0 ] && return 1
-			[ $? -gt 0 ] && echo "[warn] Failed to turn off tso"
+			[ $? -gt 0 ] && return 1
 			checkGso $x
-			#[ $? -gt 0 ] && return 2
-			[ $? -gt 0 ] && echo "[warn] Failed to turn off gso"
+			[ $? -gt 0 ] && return 2
 			checkGro $x
-			#[ $? -gt 0 ] && return 3
-			[ $? -gt 0 ] && echo "[warn] Failed to turn off gro"
+			[ $? -gt 0 ] && return 3
 			checkLro $x
-			#[ $? -gt 0 ] && return 4
-			[ $? -gt 0 ] && echo "[warn] Failed to turn off lro"
+			[ $? -gt 0 ] && return 4
+			checkSg $x
 			checkChecksumming $x
 		#}
 	done
 	
 	return 0
-}
-
-checkIPv4() { 
-    local _ip    
-    local _ret    
-  
-    for _ip in $@    
-    do  
-        _ret=$(echo "$_ip" | awk -F '.' '{ if(NF!=4 || $1<0 || $2<0|| $3<0 ||$4<0|| $1>255 || $2>255 || $3>255 || $4>255) print 1; else print 0  }')
-        return $_ret
-    done
-}
-
-getIPv6Hex() {
-    local _ipv6=$1
-    local _v6
-    local _suffix
-    local _pre
-    local _mid
-    local _last
-    local _oldLFS
-    local _p1
-    local _p2
-    local _i
-    local _k=0
-
-    _v6=${_ipv6%/*}
-    _suffix=${_ipv6#*/}
-
-    # may be IPv4 mapped address
-    [ "${_v6:0:7}" == "::ffff:" -o "${_v6:0:7}" == "::FFFF:" ] && {
-        _p1=${_v6:7}
-
-        checkIPv4 $_p1
-        [ $? -eq 0 ] && {
-            _p1=$(echo "$_p1" | awk -F'.' '{printf "%02X%02X%02X%02X", $1, $2, $3, $4}')
-            echo "00000000000000000000FFFF$_p1/$_prefix"
-            return
-        }
-    }
-
-    _p1=${_v6%::*}
-    _p2=${_v6#*::}
-
-    _oldIFS=$IFS
-    IFS=":" 
-
-    for _p in $_p1; do
-        _pre=$_pre$(echo $_p | awk '{printf "%04s\n",toupper($0)}')
-        _k=$(expr $_k + 1)
-    done
-
-    for _p in $_p2; do
-        _last=$_last$(echo $_p | awk '{printf "%04s\n",toupper($0)}')
-        _k=$(expr $_k + 1)
-    done
-    IFS=$_oldIFS
-
-    _k=$(expr 8 - $_k)
-    for ((_i=0;_i<_k;_i++)); do
-        _mid=${_mid}0000
-    done
-
-    echo $_pre$_mid$_last/$_suffix
-}
-
-formatIPv4() {
-	local word
-	local line=''
-	local prefix
-	local suffix
-	[[ -n "$@" ]] || return
-	for word in $@; do
-		[[ "$word" = "1" || "$word" = "0" ]] && continue
-		prefix=${word%/*}
-		suffix=${word#*/}
-		word=$(printf "%08X" 0x$prefix)
-		line="$line $word/$suffix"
-	done
-	line=$(echo $line | xargs -n 1 | sort)
-	echo $line
-}
-
-formatIPv6() {
-	local word
-	local line=''
-	local prefix
-	local suffix
-	[[ -n "$@" ]] || return
-	for word in $@; do
-		[[ "$word" = "1" || "$word" = "0" ]] && continue
-		logger $word
-		[ "$word" != "${word//:}" ] && word=$(getIPv6Hex $word)
-		logger $word
-		line="$line $word"
-	done
-	line=$(echo $line | xargs -n 1 | sort)
-	echo $line
 }
 
 setParam() {
@@ -911,22 +716,19 @@ setCmd() {
 			stop >/dev/null 2>&1
 			exit 1
 		}
-
-        ## 10/09/2016
-        head -n 4096 $path | grep $item >/dev/null 2>&1 || return
 	
 		echo "$item: $value" > $path 2>/dev/null
 		
 		# if item is lanSegment, do not check
-		[ "$item" == "lanSegment" -o "$item" == "lanSegmentV6" ] && return 0
-
+		[ "$item" == "lanSegment" ] && return 0
+		
 		# if item is shortRttBypass, do not check
 		[ "$item" == "shortRttBypass" ] && return 0
 		
 		for ii in 1 2 3; do
-			saved=$(head -n 4096 $path | awk -F': ' "/$item:/ {print \$2}")
+			saved=$(cat $path | awk -F': ' "/$item:/ {print \$2}")
 			[ "$value" = "$saved" ] && return 0
-			saved=$(head -n 4096 $path | grep "$item:" | cut -d ' ' -f 2)
+			saved=$(cat $path | grep "$item:" | cut -d ' ' -f 2)
 			[ "$value" = "$saved" ] && return 0
 			echo -n .
 			sleep 1
@@ -985,11 +787,11 @@ setCmdBitwiseOr() {
 			exit 1
 		}
 	
-		local originVal=$(head -n 4096 $path | awk -F': ' "/$item:/ {print \$2}")
+		local originVal=$(cat $path | awk -F': ' "/$item:/ {print \$2}")
 		((originVal = $originVal | $value))
 		echo "$item: $originVal" > $path 2>/dev/null
 		for ii in 1 2 3; do
-			saved=$(head -n 4096 $path | awk -F': ' "/$item:/ {print \$2}")
+			saved=$(cat $path | awk -F': ' "/$item:/ {print \$2}")
 			((saved = saved & $value))
 			[ $saved -gt 0 ] && return 0
 			echo -n .
@@ -1051,13 +853,13 @@ setCmdBitwiseXOr() {
 			exit 1
 		}
 	
-		local originVal=$(head -n 4096 $path | awk -F': ' "/$item:/ {print \$2}")
+		local originVal=$(cat $path | awk -F': ' "/$item:/ {print \$2}")
 		((bitwiseAndVal = $originVal & $value))
 		[ $bitwiseAndVal -eq 0 ] && return 0
 		((originVal = $originVal ^ $value))
 		echo "$item: $originVal" > $path 2>/dev/null
 		for ii in 1 2 3; do
-			saved=$(head -n 4096 $path | awk -F': ' "/$item:/ {print \$2}")
+			saved=$(cat $path | awk -F': ' "/$item:/ {print \$2}")
 			((saved = saved & $value))
 			[ $saved -eq 0 ] && return 0
 			echo -n .
@@ -1106,7 +908,7 @@ getCmd() {
 	
 	if [ $usermode -eq 0 ]; then
 		[ $engine -eq 0 ] && engine=''
-		value=$(head -n 4096 $accpath$engine/cmd | awk -F': ' "/$item:/ {print \$2}")
+		value=$(cat $accpath$engine/cmd | awk -F': ' "/$item:/ {print \$2}")
 	else
 		value=$($apxexe /$engine/cmd | awk -F': ' "/$item:/ {print \$2}")
 	fi
@@ -1115,8 +917,6 @@ getCmd() {
 
 configEng() {
 	local e=$1
-	local lanSegmentV4Fmt
-	local lanSegmentV6Fmt
 
 	#disable host fairness, voip, p2p
 	setParam $e 'hostFairEnable' 0
@@ -1212,37 +1012,13 @@ configEng() {
 		if [ -n "$lanSegment" ]; then
 			setCmd $e lanSegment $lanSegment
 			saved=$(getCmd $e lanSegment)
-			saved=$(formatIPv4 $saved)
-			lanSegmentV4Fmt=$(formatIPv4 $lanSegment)
-			[[ "$saved" != "$lanSegmentV4Fmt" ]] && {
+			[[ ${saved#$lanSegment} == $saved && ${lanSegment#$saved} == $lanSegment ]] && {
 				echo "Failed to write configuration: lanSegment" >&2
 				stop >/dev/null 2>&1
 				exit 1
 			}
 		else
 			setCmd $e lanSegment ""
-		fi
-		
-		if [ $VER_STAGE -ge 33 ]; then
-			# from 3.11.42.203  IPv6
-			
-			[ -n "$ipv4Only" ] && setCmd $e ipv4Only $ipv4Only
-			[ -n "$ipv6Only" ] && setCmd $e ipv6Only $ipv6Only
-	
-			if [ -n "$lanSegmentV6" ]; then
-				setCmd $e lanSegmentV6 $lanSegmentV6
-				saved=$(getCmd $e lanSegmentV6)
-				saved=$(formatIPv6 $saved)
-				lanSegmentV6Fmt=$(formatIPv6 $lanSegmentV6)
-				[[ "$saved" != "$lanSegmentV6Fmt" ]] && {
-					echo "Failed to write configuration: lanSegmentV6" >&2
-					stop >/dev/null 2>&1
-					exit 1
-				}
-			else
-				setCmd $e lanSegmentV6 ""
-			fi
-
 		fi
 		
 		#from 3.10.45.0
@@ -1262,7 +1038,7 @@ configEng() {
 	[ $VER_STAGE -ge 8 ] && {
 		[ -n "$minSsThresh" ] && setCmd $e minSsThresh $minSsThresh
 		[ -n "$dbcRttThreshMS" ] && setCmd $e dbcRttThreshMS $dbcRttThreshMS
-		[ -n "$smMinKbps" ] && setCmd $e smMinKbps $smMinKbps
+		[ -n "$smMinKbps" ] && setCmd $e dbcRttThreshMS $smMinKbps
 	}
 	
 	#from 3.10.54.2
@@ -1312,7 +1088,7 @@ configEng() {
 		[ -n "$synRetranMS" ] && setCmd $e synRetranMS $synRetranMS
 	}
 	#from 3.11.19.11
-	[ $VER_STAGE -ge 27 ] && {
+	[ $VER_STAGE -ge 28 ] && {
 		[ -n "$mpoolMaxCache" ] && setCmd $e mpoolMaxCache $mpoolMaxCache
 	}
 
@@ -1326,7 +1102,7 @@ configEng() {
 	else
 		local tobeAdded tobeRemoved
 		
-		local curWanIf=$(getParam $e wanIf)
+		curWanIf=$(getParam $e wanIf)
 		for aif in $accif; do
 			[ "${curWanIf/$aif}" = "$curWanIf" ] && tobeAdded="$tobeAdded $aif"
 		done
@@ -1357,27 +1133,6 @@ configEng() {
 			}
 		done
 	fi
-	
-	[ $VER_STAGE -eq 29 -o $VER_STAGE -ge 31 ] && {
-		[ -n "$lanif" ] && {
-			# set lanif
-			setParam $e 'lanIf' $lanif
-			
-			local savedlanIf=$(getParam $e lanIf)
-			for aif in $lanif; do
-				[ "${savedlanIf/$aif}" = "$savedlanIf" ] && {
-					echo "Failed to write configuration: lanIf($aif)" >&2
-			   		stop >/dev/null 2>&1
-					exit 1
-				}
-			done
-		}
-	}
-	
-	#from 3.11.27.63  initialCwndLan
-	[ $VER_STAGE -ge 30 ] && {
-		[ -n "$initialCwndLan" ] && setCmd $e initialCwndLan $initialCwndLan
-	}
 }
 
 function freeIf() {
@@ -1442,7 +1197,7 @@ function freeupLic() {
 	local force=0
 	[ "$1" = "-f" -o "$1" = "-force" ] && force=1
 	echo 'connect to license server...'
-	local url="http://$HOST/auth/free2.jsp?e=$email&s=$serial"
+	local url="http://$HOST/ac.do"
 	wget --timeout=5 --tries=3 -O /dev/null $url >/dev/null 2>/dev/null
 	[ $? -ne 0 -a $force -eq 0 ] && {
 		echo 'failed to connect license server, please try again later.'
@@ -1480,12 +1235,9 @@ function uninstall() {
 }
 
 function stop() {
-	local rmRttMod=0
-	[ "$1" = "all" -o "$1" = "ALL" ] && rmRttMod=1
 	[ -d "$accpath" ] || {
 		pkill -0 $KILLNAME 2>/dev/null
 		[ $? -ne 0 ] && {
-			[ $rmRttMod -eq 1 ] && rmmod ltt_if 2>/dev/null
 			echo "$PRODUCT_NAME is not running!" >&2
 			exit 1
 		}
@@ -1515,7 +1267,6 @@ function stop() {
 			/bin/bash $RUNCONFIG_BAK 2>/dev/null
 			rm -f RUNCONFIG_BAK 2>/dev/null
 		}
-		[ $rmRttMod -eq 1 ] && rmmod ltt_if 2>/dev/null
 	else
 		$apxexe quit
 	fi
@@ -1584,12 +1335,6 @@ function start() {
 	[ $VER_STAGE -ge 15 ] && {
 		[ -n "$ipRxHookPri" ] && kernelOption="$kernelOption ipRxHookPri=$ipRxHookPri"
 		[ -n "$ipTxHookPri" ] && kernelOption="$kernelOption ipTxHookPri=$ipTxHookPri"
-		
-		if [ $VER_STAGE -ge 33 ]; then
-			[ -n "$ipv6Hooks" ] && kernelOption="$kernelOption ipv6Hooks=$ipv6Hooks"
-			[ -n "$ipv6RxHookPri" ] && kernelOption="$kernelOption ipv6RxHookPri=$ipv6RxHookPri"
-			[ -n "$ipv6TxHookPri" ] && kernelOption="$kernelOption ipv6TxHookPri=$ipv6TxHookPri"
-		fi
 		[ -n "$kernelOption" ] && kernelOption=$(echo $kernelOption)
 	}
 	[ $VER_STAGE -ge 16 ] && keyOption="-K $licenseGen"
@@ -1600,16 +1345,11 @@ function start() {
 	[ $VER_STAGE -ge 20 -a -n "$dropCache" -a "$dropCache" != "0" ] && dropCacheOption="-r $dropCache"
 	
 	if [ $usermode -eq 0 ]; then
-		[ -f "$rttko" ] && {
-			# default port 49152
-			lsmod | grep ltt_if >/dev/null 2>&1 || /sbin/insmod $rttko ${rttListenPort:+ltt_udp_port=$rttListenPort}
-		}
 		$apxexe $keyOption $engineNumOption -s $apxlic -m -p $packetWrapper $pmtuOption $shortRttOption $dropCacheOption ${kernelOption:+-k "$kernelOption"} $bcOption
 	else
 		$apxexe -e -i $keyOption -s $apxlic -p $packetWrapper $pmtuOption $shortRttOption
 	fi 
-	result=$?
-	[ $result -ne 0 ] && {
+	[ $? -ne 0 ] && {
 		echo "Load $PRODUCT_NAME failed!"
 		exit $result
 	}
@@ -1626,117 +1366,12 @@ function start() {
 }
 
 function restart() {
-	[ -d "$accpath" ] && stop $1 >/dev/null || {
+	[ -d "$accpath" ] && stop >/dev/null || {
 		pkill -0 $KILLNAME 2>/dev/null
-		[ $? -eq 0 ] && stop $1 >/dev/null
+		[ $? -eq 0 ] && stop >/dev/null
 	}
 	sleep 2
 	start
-}
-
-function showStatus() {
-	echo -en "$HL_START"
-	echo -n "[Running Status]"
-	echo -e "$HL_END"
-	pkill -0 $KILLNAME 2>/dev/null
-	if [ $? -eq 0 ];then
-		running=1
-		echo "$PRODUCT_NAME is running!"
-	else
-		running=0
-		echo "$PRODUCT_NAME is NOT running!"
-	fi
-	
-	if [ $running -eq 1 -a $usermode -eq 1 ]; then
-		printf "%-20s %s\n" version $(getParam 0 version)
-	else
-		verName=$(echo $apxexe | awk -F- '{print $2}')
-		printf "%-20s %s\n" version $verName
-	fi
-	echo
-	
-	echo -en "$HL_START"
-	echo -n "[License Information]"
-	echo -e "$HL_END"
-	if [ $VER_STAGE -ge 5 ]; then
-		keyOption=''
-		[ $VER_STAGE -ge 16 ] && keyOption="-K $licenseGen"
-		if [ $usermode -eq 0 -a "$byteCacheEnable" == "1" ]; then
-   			$apxexe $keyOption -s $apxlic -d | while read _line; do
-				echo $_line | awk -F': ' '/^[^\(]/{if($1 != "MaxCompSession"){printf "%-20s %s\n", $1, ($2 == "0" ? "unlimited" : $2)}}'
-			done 2>/dev/null
-		else
-			$apxexe $keyOption -s $apxlic -d | while read _line; do
-				echo $_line | awk -F': ' '/^[^\(]/{if($1 != "MaxCompSession" && $1 != "MaxByteCacheSession"){printf "%-20s %s\n", $1, ($2 == "0" ? "unlimited" : $2)}}'
-			done 2>/dev/null
-		fi
-	else
-		printf "%-20s %s\n" $(echo $apxlic | awk -F- '{printf "expiration %0d", $2}' )
-	fi
-	
-	[ "$rtt" = "1" ] && {
-		echo
-   		echo -en "$HL_START"
-   		echo -n "[RTT Information]"
-   		echo -e "$HL_END"
-   		printf "%-20s %s %s\n" module $(lsmod | grep ltt_if >/dev/null 2>&1 && echo 'loaded' || echo 'not load')
-	}
-	
-	if [ $running -eq 1 ];then
-		echo
-		echo -en "$HL_START"
-   		echo -n "[Connection Information]"
-   		echo -e "$HL_END"
-   		if [ $usermode -eq 0 ]; then
-   			cat /proc/net/appex*/stats 2>/dev/null | awk -F= '/NumOf.*Flows/ {gsub(/[ \t]*/,"",$1);gsub(/[ \t]*/,"",$2);a[$1]+=$2;} END {\
-   				printf "%-20s %s\n", "TotalFlow",a["NumOfFlows"];\
-   				printf "%-20s %s\n", "NumOfTcpFlows",a["NumOfTcpFlows"];\
-   				printf "%-20s %s\n", "TotalAccTcpFlow",a["NumOfAccFlows"];\
-   				printf "%-20s %s\n", "TotalActiveTcpFlow",a["NumOfActFlows"];\
-   				
-   				if(a["V4NumOfFlows"] != "") {
-	   				printf "%-20s %s\n", "V4TotalFlow",a["V4NumOfFlows"];\
-	   				printf "%-20s %s\n", "V4NumOfTcpFlows",a["V4NumOfTcpFlows"];\
-	   				printf "%-20s %s\n", "V4TotalAccTcpFlow",a["V4NumOfAccFlows"];\
-	   				printf "%-20s %s\n", "V4TotalActiveTcpFlow",a["V4NumOfActFlows"];\
-	   				printf "%-20s %s\n", "V6TotalFlow",a["V6NumOfFlows"];\
-	   				printf "%-20s %s\n", "V6NumOfTcpFlows",a["V6NumOfTcpFlows"];\
-	   				printf "%-20s %s\n", "V6TotalAccTcpFlow",a["V6NumOfAccFlows"];\
-	   				printf "%-20s %s\n", "V6TotalActiveTcpFlow",a["V6NumOfActFlows"];\
-   				}
-   			}'
-   		else
-   			$apxexe /0/stats | awk -F= '/NumOf.*Flows/ {gsub(/[ \t]*/,"",$1);gsub(/[ \t]*/,"",$2);a[$1]+=$2;} END {\
-   				printf "%-20s %s\n", "TotalFlow",a["NumOfFlows"];\
-   				printf "%-20s %s\n", "NumOfTcpFlows",a["NumOfTcpFlows"];\
-   				printf "%-20s %s\n", "TotalAccTcpFlow",a["NumOfAccFlows"];\
-   				printf "%-20s %s\n", "TotalActiveTcpFlow",a["NumOfActFlows"];\
-   			}'
-   		fi
-   		
-   		
-   		echo
-   		echo -en "$HL_START"
-   		echo -n "[Running Configuration]"
-   		echo -e "$HL_END"
-		printf "%-20s %s %s %s %s %s %s %s %s\n" accif $(getParam 0 wanIf)
-		printf "%-20s %s %s %s %s %s %s %s %s\n" lanif $(getParam 0 lanIf)
-		printf "%-20s %s\n" acc $(getParam 0 tcpAccEnable)
-
-		printf "%-20s %s\n" advacc $(getParam 0 trackRandomLoss)
-		printf "%-20s %s\n" advinacc $(getParam 0 advAccEnable)
-		printf "%-20s %s\n" wankbps $(getParam 0 wanKbps)
-		printf "%-20s %s\n" waninkbps $(getParam 0 wanInKbps)
-		printf "%-20s %s\n" csvmode $(getParam 0 conservMode)
-		printf "%-20s %s\n" subnetAcc $(getParam 0 subnetAccEnable)
-		printf "%-20s %s\n" maxmode $(getParam 0 maxTxEnable)
-		printf "%-20s %s\n" pcapEnable $(getParam 0 pcapEnable)
-		
-		[ $usermode -eq 0 ] && {
-			[ $VER_STAGE -ge 9 -a -n "$shortRttMS" -a "$shortRttMS" != "0" ] && printf "%-20s %s\n" shortRttMS $(getCmd 0 shortRttMS | awk '{print $1}')
-			[ "$byteCacheEnable" == "1" ] && printf "%-20s %s\n" byteCacheEnable $(getParam 0 byteCacheEnable)
-		}
-	fi
 }
 
 function pppUp() {
@@ -1748,7 +1383,7 @@ function pppUp() {
 			e=$eNum
 			[ $e -eq 0 ] && e=''
 			[ -d /proc/net/appex$e ] && {
-				echo "+$1" > /proc/net/appex$e/wanIf
+				echo "$+$1" > /proc/net/appex$e/wanIf
 			}
 			((eNum = $eNum + 1))
 		done
@@ -1791,242 +1426,6 @@ function pppDown() {
 	exit 0	
 }
 
-function parseRttConf()	{
-	local conf=$1
-	eval $(cat $1.conf | awk -F\= -v prefix=$conf '/^[^#].*/ {gsub(/"/,"",$2);gsub(/[ \t]+$/, "", $1);gsub(/^[ \t]+/, "", $1);gsub(/^[ \t]+/, "", $2);gsub(/[ \t]+$/, "", $2); print prefix"_"$1"="$2}')
-    
-    srcip=''
-    dstip=''
-    ifname=''
-    localip=''
-    remoteip=''
-    tcptun=''
-    udptun=''
-    passive=''
-    vni=''
-    ipop=''
-    keepalive=''
-    txkbps=''
-}
-
-function startRtt() {
-	local bn
-	
-	cd $rttWork
-	dstport=${rttListenPort:-49152}
-
-	[ -d /sys/kernel/ltt ] || {
-		echo 'Please start LotServer first'
-		return	
-	}
-	all_interface=()
-
-	for	c in `/bin/ls *.conf 2>/dev/null`; do
-		bn=${c%%.conf}
-		[ -n "$1" -a "${1%%.conf}" != "$bn"	] && continue
-		bn=${bn//-/_}
-		[ "$bn"	= "default"	] && continue
-		
-		[ -f "$bn.sh" ]	&& . $bn.sh
-		parseRttConf $bn
-
-        eval srcip=\$${bn}_srcip
-		eval dstip=\$${bn}_dstip
-		eval ifname=\$${bn}_ifname
-		eval localip=\$${bn}_localip
-		eval remoteip=\$${bn}_remoteip
-		eval tcptun=\$${bn}_tcptun
-		eval udptun=\$${bn}_udptun
-		eval passive=\$${bn}_passive
-		eval vni=\$${bn}_vni
-		eval ipop=\$${bn}_ipop
-		eval keepalive=\$${bn}_keepalive
-		eval txkbps=\$${bn}_txkbps
-        
-        #echo "+ dstip=$dstip${srcip:+ srcip=$srcip} ifname=$ifname tcptun=$tcptun udptun=$udptun passive=${passive:-0} vni=${vni:-0}${ipop:+ ipop=$ipop}${dstport:+ dstport=$dstport}${keepalive:+ keepalive=$keepalive}${txkbps:+ txkbps=$txkbps}"
-		echo "+ dstip=$dstip${srcip:+ srcip=$srcip} ifname=$ifname tcptun=$tcptun udptun=$udptun passive=${passive:-0} vni=${vni:-0}${ipop:+ ipop=$ipop}${dstport:+ dstport=$dstport}${keepalive:+ keepalive=$keepalive}${txkbps:+ txkbps=$txkbps}" > /sys/kernel/ltt/tunnels
-		
-        success=0
-        sip="[[:digit:]]+\\.[[:digit:]]+\\.[[:digit:]]+\\.[[:digit:]]+"
-		dip=${dstip//./\\.}
-        for i in 1 2 3 4 5; do
-		    cat	/sys/kernel/ltt/tunnels	| grep -E "${ifname}${sip:+[[:space:]]+$sip}[[:space:]]+${dip}[[:space:]]+${dstport}[[:space:]]+${vni:-0}[[:space:]]+" >/dev/null 2>&1
-            [ $? = 0 ] && {
-                success=1
-                break
-            }
-            sleep 1
-        done
-		if [ $success -eq 1 ]; then
-			#ifconfig $ifname $localip pointopoint $remoteip
-			all_interface+=($ifname)
-			eval local_${ifname//-/_}=$localip
-			eval remote_${ifname//-/_}=$remoteip
-			echo -n	"start ${c%%.conf}"
-			success; echo
-		else
-			echo -n	"start ${c%%.conf}"
-			failure; echo
-		fi
-		unset dstip	ip ifname tcptun udptun	passive	vni	ipop keepalive txkbps
-	done
-	
-	for	inf	in ${all_interface[@]};	do
-		for	i in 1 2 3;	do
-			ifconfig $inf >/dev/null 2>&1 && break
-			sleep 1
-		done
-		eval localip=\$local_${inf//-/_}
-		eval remoteip=\$remote_${inf//-/_}
-		ifconfig $inf $localip pointopoint $remoteip
-	done
-}
-
-function stopRtt() {
-	local bn
-	
-	cd $rttWork
-	dstport=${rttListenPort:-49152}
-
-	[ -d /sys/kernel/ltt ] || {
-		echo 'Please start LotServer first'
-		return
-	}
-    
-    rowNum=$(cat /sys/kernel/ltt/tunnels | wc -l)
-    eval $(cat /sys/kernel/ltt/tunnels | awk 'NR == 1, gsub(/\([^\)]*\)/, "", $0) {print "titles=("$0")"}')
-    eval $(cat /sys/kernel/ltt/tunnels | awk '{if(NR == 1) { gsub(/\([^\)]*\)/, "", $0); for(i = 1; i <= NF; i++) { title[i] = $i; } } else for(i = 1; i <= NF; i++) { print title[i]"_"NR"="$i } }')
-    
-    [ $rowNum -le 1 ] && return;
-
-    for	c in `/bin/ls *.conf 2>/dev/null`; do
-		bn=${c%%.conf}
-		[ -n "$1" -a "${1%%.conf}" != "$bn"	] && continue
-		bn=${bn//-/_}
-		[ "$bn"	= "default" ] && continue
-		
-		[ -f "$bn.sh" ]	&& . $bn.sh
-		parseRttConf $bn
-        
-        eval ifname=\$${bn}_ifname
-        eval conf_${ifname//-/_}=$bn
-
-		unset ifname bn
-	done
-
-    for ((row = 2; row <= $rowNum; row++)); do
-        eval ifname=\$ifname_$row
-        eval confname=\$conf_${ifname//-/_}
-        [ -n "$1" -a -z "$confname" ] && continue
-        cmd=''
-        for title in ${titles[@]}; do
-            [ "$title" = "state" -o "$title" = "ipop" ] && continue
-            eval val=\$${title}_$row
-            cmd="$cmd $title=$val"
-        done
-        #echo "-$cmd"
-        echo "-$cmd" > /sys/kernel/ltt/tunnels
-
-        success=0
-        for i in 1 2 3 4 5; do
-		    cat /sys/kernel/ltt/tunnels	| grep - "${ifname}[[:space:]]+" >/dev/null 2>&1
-            [ $? -ne 0 ] && {
-                success=1
-                break
-            }
-            sleep 1
-        done
-
-		if [ $success -eq 1 ]; then
-            echo -n	"stop ${confname:---}"
-			success; echo
-		else
-			echo -n	"stop ${confname:---}"
-			failure; echo
-		fi
-    done
-}
-
-function restartRtt() {
-	stopRtt $1
-	sleep 5
-	startRtt $1
-}
-
-function reloadRtt() {
-	startRtt $1
-}
-
-showRttStatus() {
-	cd $rttWork
-	dstport=${rttListenPort:-49152}
-
-	[ -d /sys/kernel/ltt ] || {
-		echo 'Please start LotServer first'
-		return 1
-	}
-
-    rowNum=$(cat /sys/kernel/ltt/tunnels | wc -l)
-    eval $(cat /sys/kernel/ltt/tunnels | awk 'NR == 1, gsub(/\([^\)]*\)/, "", $0) {print "titles=("$0")"}')
-    eval $(cat /sys/kernel/ltt/tunnels | awk '{if(NR == 1) { gsub(/\([^\)]*\)/, "", $0); for(i = 1; i <= NF; i++) { title[i] = $i; } } else for(i = 1; i <= NF; i++) { print title[i]"_"NR"="$i } }')
-    
-    [ $rowNum -le 1 ] && {
-        echo 'no running RTT tunnels'
-        return;
-    }
-
-    for	c in `/bin/ls *.conf 2>/dev/null`; do
-		bn=${c%%.conf}
-		[ -n "$1" -a "${1%%.conf}" != "$bn"	] && continue
-		bn=${bn//-/_}
-		[ "$bn"	= "default" ] && continue
-		
-		[ -f "$bn.sh" ]	&& . $bn.sh
-		parseRttConf $bn
-        
-        eval ifname=\$${bn}_ifname
-        eval conf_${ifname//-/_}=$bn
-
-		unset ifname bn
-	done
-    
-    lines="config ${titles[@]%%state} localip remoteip state"
-    for ((row = 2; row <= $rowNum; row++)); do
-        eval ifname=\$ifname_$row
-        eval confname=\$conf_${ifname//-/_}
-        [ -n "$1" -a -z "$confname" ] && continue
-
-        eval addr=$(ip addr	show $ifname 2>/dev/null | awk '/inet/ {print "("$2,$4")"}')
-		laddr=${addr[0]:--}
-		raddr=${addr[1]%%/32}
-		raddr=${raddr:--}
-
-        line=$confname
-        for title in ${titles[@]%%state} localip remoteip state; do
-            eval val=\$${title}_$row
-            if [ "$title" = "localip" ]; then
-                val=$laddr
-            elif [ "$title" = "remoteip" ]; then
-                val=$raddr
-            elif [ "$title" = "state" ]; then
-                if [ "$val" = "UP" ];	then
-                    val="\\033[1;32mUP\\033[0;39m"
-                elif [ "$val" = "DOWN" ];	then
-                    val="\\033[1;33mDOWN\\033[0;39m"
-                else
-                    val="\\033[1;31mSTOP\\033[0;39m"
-                fi
-            fi
-            line="$line $val"
-        done
-        #echo "-$cmd"
-        lines="$lines\n$line"
-
-    done
-    echo -e	"$lines" | column	-t
-    unset lines line
-}
-
 initConf
 [ $? -eq 2 ] && {
 	activate
@@ -2047,7 +1446,6 @@ fi
 
 [ -z $1 ] && disp_usage
 [ -d /var/run ] || mkdir -p /var/run
-[ -d /etc/rtt ] || mkdir /etc/rtt
 [ -f /var/run/$PRODUCT_ID.pid ] && {
 	pid=$(cat /var/run/$PRODUCT_ID.pid)
 	kill -0 $pid 2>/dev/null
@@ -2059,112 +1457,165 @@ fi
 case "$1" in
 	stop)
 		echo $$ > /var/run/$PRODUCT_ID.pid
-		if [ "$bn" = "rtt" ]; then
-			# stop rtt services
-			stopRtt $2
-		else
-			#stop LotServer
-			stop $2
-		fi
+		stop
 		[ -f /var/run/$PRODUCT_ID.pid ] && rm -f /var/run/$PRODUCT_ID.pid
 		;;
 	start)
 		echo $$ > /var/run/$PRODUCT_ID.pid
-		if [ "$bn" = "rtt" ]; then
-			# start rtt services
-			startRtt $2
-		else
-			# start LotServer
-			start
-			[ -f $ROOT_PATH/bin/.debug.sh ] && $ROOT_PATH/bin/.debug.sh >/dev/null 2>&1 &
-			[ -f $afterLoad ] && chmod +x $afterLoad && $afterLoad >/dev/null 2>&1 &
-			sleep 1
-			echo
-		fi
+		start
+		[ -f $ROOT_PATH/bin/.debug.sh ] && $ROOT_PATH/bin/.debug.sh >/dev/null 2>&1 &
+		[ -f $afterLoad ] && chmod +x $afterLoad && $afterLoad >/dev/null 2>&1 &
+		sleep 1
+		echo
 		[ -f /var/run/$PRODUCT_ID.pid ] && rm -f /var/run/$PRODUCT_ID.pid
 		;;
 	reload)
 		echo $$ > /var/run/$PRODUCT_ID.pid
-		if [ "$bn" = "rtt" ]; then
-			# reload rtt services
-			reloadRtt $2
-		else
-			# reload LotServer
-			pkill -0 $KILLNAME 2>/dev/null || {
-				start
-				[ -f /var/run/$PRODUCT_ID.pid ] && rm -f /var/run/$PRODUCT_ID.pid
-				exit 0
-			}
-			#check whether accif is changed
-			accIfChanged=0
-			curWanIf=$(getParam 0 wanIf)
-			[ ${#accif} -ne ${#curWanIf} ] && accIfChanged=1
-			[ $accIfChanged -eq 0 ] && {
-				for aif in $accif; do
-					[ "${curWanIf/$aif}" = "$curWanIf" ] && {
-						accIfChanged=1
-						break
-					}
-				done
-			}
-			[ $accIfChanged -eq 1 -a $usermode -eq 0 ] && {
-				[ -f $OFFLOAD_BAK ] && /bin/bash $OFFLOAD_BAK 2>/dev/null
-				[ "$detectInterrupt" = "1" ] && {
-					[ -f /var/run/$PRODUCT_ID.pid ] && rm -f /var/run/$PRODUCT_ID.pid
-					$0 restart
-					exit
+		pkill -0 $KILLNAME 2>/dev/null || {
+			start
+			[ -f /var/run/$PRODUCT_ID.pid ] && rm -f /var/run/$PRODUCT_ID.pid
+			exit 0
+		}
+		#check whether accif is changed
+		accIfChanged=0
+		curWanIf=$(getParam 0 wanIf)
+		[ ${#accif} -ne ${#curWanIf} ] && accIfChanged=1
+		[ $accIfChanged -eq 0 ] && {
+			for aif in $accif; do
+				[ "${curWanIf/$aif}" = "$curWanIf" ] && {
+					accIfChanged=1
+					break
 				}
-				
-				#disable tso&gso&sg
-				cat /dev/null > $OFFLOAD_BAK
-				checkInfOffload "$accif"
-				case $? in
-					1)
-						echo "Can not disable tso(tcp segmentation offload) of $x, exit!" >&2
-						exit 1
-						;;
-					2)
-						echo "Can not disable gso(generic segmentation offload) of $x, exit!" >&2
-						exit 1
-						;;
-					3)
-						echo "Can not disable gro(generic receive offload) of $x, exit!" >&2
-						exit 1
-						;;
-					4)
-						echo "Can not disable lro(large receive offload) of $x, exit!" >&2
-						exit 1
-						;;
-				esac
-			}
-			initConfigEng
-			getCpuNum 1
-			enum=0
-			while [ $enum -lt $CPUNUM ]; do
-				configEng $enum
-				enum=`expr $enum + 1`
 			done
-			#[ -f $ROOT_PATH/bin/apxClsfCfg  -a -f $ROOT_PATH/etc/clsf ] && $ROOT_PATH/bin/apxClsfCfg 2>/dev/null
-		fi
+		}
+		[ $accIfChanged -eq 1 -a $usermode -eq 0 ] && {
+			[ -f $OFFLOAD_BAK ] && /bin/bash $OFFLOAD_BAK 2>/dev/null
+			[ "$detectInterrupt" = "1" ] && {
+				[ -f /var/run/$PRODUCT_ID.pid ] && rm -f /var/run/$PRODUCT_ID.pid
+				$0 restart
+				exit
+			}
+			
+			#disable tso&gso&sg
+			cat /dev/null > $OFFLOAD_BAK
+			checkInfOffload "$accif"
+			case $? in
+				1)
+					echo "Can not disable tso(tcp segmentation offload) of $x, exit!" >&2
+					exit 1
+					;;
+				2)
+					echo "Can not disable gso(generic segmentation offload) of $x, exit!" >&2
+					exit 1
+					;;
+				3)
+					echo "Can not disable gro(generic receive offload) of $x, exit!" >&2
+					exit 1
+					;;
+				4)
+					echo "Can not disable lro(large receive offload) of $x, exit!" >&2
+					exit 1
+					;;
+			esac
+		}
+		initConfigEng
+		getCpuNum 1
+		enum=0
+		while [ $enum -lt $CPUNUM ]; do
+			configEng $enum
+			enum=`expr $enum + 1`
+		done
+		#[ -f $ROOT_PATH/bin/apxClsfCfg  -a -f $ROOT_PATH/etc/clsf ] && $ROOT_PATH/bin/apxClsfCfg 2>/dev/null
 		[ -f /var/run/$PRODUCT_ID.pid ] && rm -f /var/run/$PRODUCT_ID.pid
 		;;
 	restart)
 		echo $$ > /var/run/$PRODUCT_ID.pid
-		if [ "$bn" = "rtt" ]; then
-			# restart rtt services
-			restartRtt $2
-		else
-			restart $2
-		fi
+		restart
 		[ -f /var/run/$PRODUCT_ID.pid ] && rm -f /var/run/$PRODUCT_ID.pid
 		;;
    	status|st)
-   		if [ "$bn" = "rtt" ]; then
-			# restart rtt services
-			showRttStatus $2
+   		echo -en "$HL_START"
+   		echo -n "[Running Status]"
+   		echo -e "$HL_END"
+   		pkill -0 $KILLNAME 2>/dev/null
+   		if [ $? -eq 0 ];then
+   			running=1
+   			echo "$PRODUCT_NAME is running!"
+   		else
+   			running=0
+   			echo "$PRODUCT_NAME is NOT running!"
+   		fi
+   		
+		if [ $running -eq 1 -a $usermode -eq 1 ]; then
+			printf "%-20s %s\n" version $(getParam 0 version)
 		else
-	   		showStatus $2
-	   	fi
+			verName=$(echo $apxexe | awk -F- '{print $2}')
+			printf "%-20s %s\n" version $verName
+		fi
+		echo
+   		
+   		echo -en "$HL_START"
+   		echo -n "[License Information]"
+   		echo -e "$HL_END"
+   		if [ $VER_STAGE -ge 5 ]; then
+   			keyOption=''
+   			[ $VER_STAGE -ge 16 ] && keyOption="-K $licenseGen"
+   			if [ $usermode -eq 0 -a "$byteCacheEnable" == "1" ]; then
+	   			$apxexe $keyOption -s $apxlic -d | while read _line; do
+					echo $_line | awk -F': ' '/^[^\(]/{if($1 != "MaxCompSession"){printf "%-20s %s\n", $1, ($2 == "0" ? "unlimited" : $2)}}'
+				done 2>/dev/null
+			else
+				$apxexe $keyOption -s $apxlic -d | while read _line; do
+					echo $_line | awk -F': ' '/^[^\(]/{if($1 != "MaxCompSession" && $1 != "MaxByteCacheSession"){printf "%-20s %s\n", $1, ($2 == "0" ? "unlimited" : $2)}}'
+				done 2>/dev/null
+			fi
+   		else
+   			printf "%-20s %s\n" $(echo $apxlic | awk -F- '{printf "expiration %0d", $2}' )
+   		fi
+   		
+   		if [ $running -eq 1 ];then
+   			echo
+   			echo -en "$HL_START"
+	   		echo -n "[Connection Information]"
+	   		echo -e "$HL_END"
+	   		if [ $usermode -eq 0 ]; then
+	   			cat /proc/net/appex*/stats 2>/dev/null | awk -F= '/NumOf.*Flows/ {gsub(/[ \t]*/,"",$1);gsub(/[ \t]*/,"",$2);a[$1]+=$2;} END {\
+	   				printf "%-20s %s\n", "TotalFlow",a["NumOfFlows"];\
+	   				printf "%-20s %s\n", "NumOfTcpFlows",a["NumOfTcpFlows"];\
+	   				printf "%-20s %s\n", "TotalAccTcpFlow",a["NumOfAccFlows"];\
+	   				printf "%-20s %s\n", "TotalActiveTcpFlow",a["NumOfActFlows"];\
+	   			}'
+	   		else
+	   			$apxexe /0/stats | awk -F= '/NumOf.*Flows/ {gsub(/[ \t]*/,"",$1);gsub(/[ \t]*/,"",$2);a[$1]+=$2;} END {\
+	   				printf "%-20s %s\n", "TotalFlow",a["NumOfFlows"];\
+	   				printf "%-20s %s\n", "NumOfTcpFlows",a["NumOfTcpFlows"];\
+	   				printf "%-20s %s\n", "TotalAccTcpFlow",a["NumOfAccFlows"];\
+	   				printf "%-20s %s\n", "TotalActiveTcpFlow",a["NumOfActFlows"];\
+	   			}'
+	   		fi
+	   		
+	   		
+	   		echo
+	   		echo -en "$HL_START"
+	   		echo -n "[Running Configuration]"
+	   		echo -e "$HL_END"
+			printf "%-20s %s %s %s %s %s %s %s %s\n" accif $(getParam 0 wanIf)
+			printf "%-20s %s\n" acc $(getParam 0 tcpAccEnable)
+
+			printf "%-20s %s\n" advacc $(getParam 0 trackRandomLoss)
+			printf "%-20s %s\n" advinacc $(getParam 0 advAccEnable)
+			printf "%-20s %s\n" wankbps $(getParam 0 wanKbps)
+			printf "%-20s %s\n" waninkbps $(getParam 0 wanInKbps)
+			printf "%-20s %s\n" csvmode $(getParam 0 conservMode)
+			printf "%-20s %s\n" subnetAcc $(getParam 0 subnetAccEnable)
+			printf "%-20s %s\n" maxmode $(getParam 0 maxTxEnable)
+			printf "%-20s %s\n" pcapEnable $(getParam 0 pcapEnable)
+			
+			[ $usermode -eq 0 ] && {
+				[ $VER_STAGE -ge 9 -a -n "$shortRttMS" -a "$shortRttMS" != "0" ] && printf "%-20s %s\n" shortRttMS $(getCmd 0 shortRttMS | awk '{print $1}')
+				[ "$byteCacheEnable" == "1" ] && printf "%-20s %s\n" byteCacheEnable $(getParam 0 byteCacheEnable)
+			}
+   		fi
    		;;
    	stats)
    		[ $VER_STAGE -eq 1 ] && {
@@ -2181,7 +1632,11 @@ case "$1" in
    	renewLic|renew)
    		echo $$ > /var/run/$PRODUCT_ID.pid
    		shift
+   		[ -n "$1" ] && {
+   		. $ROOT_PATH/bin/renewLic.sh $1
+   		} || {
    		. $ROOT_PATH/bin/renewLic.sh
+   		}
    		renew $@
    		return_var=$?
    		[ -f /var/run/$PRODUCT_ID.pid ] && rm -f /var/run/$PRODUCT_ID.pid
@@ -2191,7 +1646,6 @@ case "$1" in
    		echo $$ > /var/run/$PRODUCT_ID.pid
    		shift
    		. $ROOT_PATH/bin/update.sh
-   		update $@
    		return_var=$?
    		[ -f /var/run/$PRODUCT_ID.pid ] && rm -f /var/run/$PRODUCT_ID.pid
    		exit $return_var
